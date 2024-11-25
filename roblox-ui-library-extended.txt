@@ -1,0 +1,346 @@
+local UILibrary = {}
+
+-- Services
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+-- Themes
+UILibrary.Themes = {
+    Default = {
+        Background = Color3.fromRGB(30, 30, 30),
+        Primary = Color3.fromRGB(45, 45, 45),
+        Secondary = Color3.fromRGB(60, 60, 60),
+        Text = Color3.fromRGB(255, 255, 255),
+        Accent = Color3.fromRGB(100, 100, 255)
+    },
+    Light = {
+        Background = Color3.fromRGB(230, 230, 230),
+        Primary = Color3.fromRGB(200, 200, 200),
+        Secondary = Color3.fromRGB(180, 180, 180),
+        Text = Color3.fromRGB(0, 0, 0),
+        Accent = Color3.fromRGB(50, 50, 200)
+    }
+}
+
+UILibrary.CurrentTheme = "Default"
+UILibrary.ConfigPath = "UILibrary/Configs/"
+
+-- Utility Functions
+local function Create(className, properties)
+    local instance = Instance.new(className)
+    for prop, value in pairs(properties) do
+        instance[prop] = value
+    end
+    return instance
+end
+
+-- Config Save/Load
+local function SaveConfig(name, data)
+    if not isfolder(UILibrary.ConfigPath) then
+        makefolder(UILibrary.ConfigPath)
+    end
+    writefile(UILibrary.ConfigPath .. name .. ".json", game:GetService("HttpService"):JSONEncode(data))
+end
+
+local function LoadConfig(name)
+    local path = UILibrary.ConfigPath .. name .. ".json"
+    if isfile(path) then
+        return game:GetService("HttpService"):JSONDecode(readfile(path))
+    end
+    return nil
+end
+
+-- Dragging Functionality (same as previous implementation)
+local function MakeDraggable(frame)
+    local dragging
+    local dragInput
+    local dragStart
+    local startPos
+
+    local function update(input)
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+end
+
+-- Extended Library Functions
+function UILibrary:CreateWindow(config)
+    config = config or {}
+    local name = config.Name or "UI Library"
+    local theme = config.Theme or self.CurrentTheme
+
+    -- Main Screen GUI
+    local screenGui = Create("ScreenGui", {
+        Name = name .. "GUI",
+        Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    })
+
+    -- Main Frame
+    local mainFrame = Create("Frame", {
+        Name = "MainFrame",
+        Size = UDim2.new(0, 500, 0, 600),
+        Position = UDim2.new(0.5, -250, 0.5, -300),
+        BackgroundColor3 = self.Themes[theme].Background,
+        BorderSizePixel = 0,
+        Parent = screenGui
+    })
+
+    -- Sidebar
+    local sidebar = Create("Frame", {
+        Name = "Sidebar",
+        Size = UDim2.new(0, 150, 1, 0),
+        BackgroundColor3 = self.Themes[theme].Primary,
+        BorderSizePixel = 0,
+        Parent = mainFrame
+    })
+
+    -- Content Frame
+    local contentFrame = Create("Frame", {
+        Name = "ContentFrame",
+        Position = UDim2.new(0, 150, 0, 0),
+        Size = UDim2.new(1, -150, 1, 0),
+        BackgroundColor3 = self.Themes[theme].Secondary,
+        BorderSizePixel = 0,
+        Parent = mainFrame
+    })
+
+    -- Make window draggable
+    MakeDraggable(mainFrame)
+
+    -- Window Object
+    local window = {
+        Frame = mainFrame,
+        Sidebar = sidebar,
+        ContentFrame = contentFrame,
+        Tabs = {}
+    }
+
+    -- Create Tab
+    function window:CreateTab(tabName)
+        local tab = Create("TextButton", {
+            Name = tabName,
+            Text = tabName,
+            Size = UDim2.new(1, 0, 0, 50),
+            BackgroundColor3 = self.Sidebar.BackgroundColor3,
+            TextColor3 = self.Themes[theme].Text,
+            BorderSizePixel = 0,
+            Parent = self.Sidebar
+        })
+
+        local tabContent = Create("ScrollingFrame", {
+            Name = tabName .. "Content",
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Visible = false,
+            Parent = self.ContentFrame,
+            CanvasSize = UDim2.new(1, 0, 1, 0),
+            ScrollBarThickness = 5
+        })
+
+        table.insert(self.Tabs, {Tab = tab, Content = tabContent})
+
+        tab.MouseButton1Click:Connect(function()
+            for _, t in ipairs(self.Tabs) do
+                t.Content.Visible = false
+            end
+            tabContent.Visible = true
+        end)
+
+        return {
+            Tab = tab,
+            Content = tabContent,
+            CreateButton = function(buttonConfig)
+                local button = Create("TextButton", {
+                    Text = buttonConfig.Text or "Button",
+                    Size = buttonConfig.Size or UDim2.new(1, -20, 0, 40),
+                    Position = buttonConfig.Position or UDim2.new(0, 10, 0, #tabContent:GetChildren() * 50),
+                    BackgroundColor3 = self.Themes[theme].Accent,
+                    TextColor3 = Color3.new(1, 1, 1),
+                    Parent = tabContent
+                })
+
+                if buttonConfig.Callback then
+                    button.MouseButton1Click:Connect(buttonConfig.Callback)
+                end
+
+                return button
+            end,
+            CreateToggle = function(toggleConfig)
+                local toggleFrame = Create("Frame", {
+                    Size = UDim2.new(1, -20, 0, 40),
+                    Position = UDim2.new(0, 10, 0, #tabContent:GetChildren() * 50),
+                    BackgroundTransparency = 1,
+                    Parent = tabContent
+                })
+
+                local label = Create("TextLabel", {
+                    Text = toggleConfig.Text or "Toggle",
+                    Size = UDim2.new(0.7, 0, 1, 0),
+                    BackgroundTransparency = 1,
+                    TextColor3 = self.Themes[theme].Text,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Parent = toggleFrame
+                })
+
+                local toggleButton = Create("TextButton", {
+                    Size = UDim2.new(0.3, 0, 1, 0),
+                    Position = UDim2.new(0.7, 0, 0, 0),
+                    BackgroundColor3 = Color3.fromRGB(100, 100, 100),
+                    Text = "",
+                    Parent = toggleFrame
+                })
+
+                local indicator = Create("Frame", {
+                    Size = UDim2.new(0.5, 0, 1, 0),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                    Parent = toggleButton
+                })
+
+                local isToggled = false
+                toggleButton.MouseButton1Click:Connect(function()
+                    isToggled = not isToggled
+                    TweenService:Create(indicator, TweenInfo.new(0.2), {
+                        Position = isToggled and UDim2.new(0.5, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
+                    }):Play()
+                    toggleButton.BackgroundColor3 = isToggled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(100, 100, 100)
+                    
+                    if toggleConfig.Callback then
+                        toggleConfig.Callback(isToggled)
+                    end
+                end)
+
+                return {
+                    Frame = toggleFrame,
+                    Toggle = function()
+                        toggleButton:SetAttribute("Clicked", true)
+                        toggleButton:Fire()
+                    end
+                }
+            end,
+            CreateSlider = function(sliderConfig)
+                local sliderFrame = Create("Frame", {
+                    Size = UDim2.new(1, -20, 0, 50),
+                    Position = UDim2.new(0, 10, 0, #tabContent:GetChildren() * 50),
+                    BackgroundTransparency = 1,
+                    Parent = tabContent
+                })
+
+                local label = Create("TextLabel", {
+                    Text = sliderConfig.Text or "Slider",
+                    Size = UDim2.new(1, 0, 0, 20),
+                    BackgroundTransparency = 1,
+                    TextColor3 = self.Themes[theme].Text,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Parent = sliderFrame
+                })
+
+                local sliderBackground = Create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 20),
+                    Position = UDim2.new(0, 0, 0, 25),
+                    BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+                    Parent = sliderFrame
+                })
+
+                local sliderFill = Create("Frame", {
+                    Size = UDim2.new(0.5, 0, 1, 0),
+                    BackgroundColor3 = self.Themes[theme].Accent,
+                    Parent = sliderBackground
+                })
+
+                local sliderButton = Create("TextButton", {
+                    Size = UDim2.new(0, 20, 1, 0),
+                    Position = UDim2.new(0.5, -10, 0, 0),
+                    BackgroundColor3 = Color3.fromRGB(200, 200, 200),
+                    Parent = sliderBackground
+                })
+
+                local min = sliderConfig.Min or 0
+                local max = sliderConfig.Max or 100
+                local value = sliderConfig.Default or ((min + max) / 2)
+
+                local function updateSlider(inputPosition)
+                    local percent = math.clamp((inputPosition.X - sliderBackground.AbsolutePosition.X) / sliderBackground.AbsoluteSize.X, 0, 1)
+                    value = min + (max - min) * percent
+                    sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+                    
+                    if sliderConfig.Callback then
+                        sliderConfig.Callback(math.floor(value))
+                    end
+                end
+
+                sliderButton.MouseButton1Down:Connect(function()
+                    local connection
+                    connection = UserInputService.InputChanged:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseMovement then
+                            updateSlider(input)
+                        end
+                    end)
+
+                    UserInputService.InputEnded:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                            connection:Disconnect()
+                        end
+                    end)
+                end)
+
+                return {
+                    Frame = sliderFrame,
+                    SetValue = function(newValue)
+                        value = math.clamp(newValue, min, max)
+                        local percent = (value - min) / (max - min)
+                        sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+                    end
+                }
+            end
+        }
+    end
+
+    return window
+end
+
+function UILibrary:SetTheme(themeName)
+    if self.Themes[themeName] then
+        self.CurrentTheme = themeName
+    else
+        warn("Theme not found. Using Default theme.")
+    end
+end
+
+function UILibrary:SaveConfig(name, config)
+    SaveConfig(name, config)
+end
+
+function UILibrary:LoadConfig(name)
+    return LoadConfig(name)
+end
+
+return UILibrary
